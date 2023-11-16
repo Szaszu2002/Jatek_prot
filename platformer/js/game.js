@@ -29,10 +29,21 @@ class GameScene extends Phaser.Scene{
             margin: 1,
             spacing: 1
         });
+
+        this.load.json('levelData','assets/level.json')
     }
 
     create(){
-        const platforms= this.add.group();
+        this.platforms= this.add.group();
+        this.fires = this.add.group();
+        this.barrels = this.physics.add.group({
+            collideWorldBounds: true,
+            bounceY: 0.1,
+            bounceX: 1
+        });
+        
+        this.levelData= this.cache.json.get('levelData');
+        
         //const ground = this.add.sprite(180, 400, 'ground');
         //this.physics.add.existing(ground, true);
         //ground.body.setAllowGravity(false);
@@ -40,17 +51,17 @@ class GameScene extends Phaser.Scene{
 
         //const ground2 = this.add.sprite(180, 300, 'ground');
         //this.physics.add.existing(ground2);
-        const ground = this.physics.add.staticSprite(180, 600, 'ground');
-        platforms.add(ground);
+        //const ground = this.physics.add.staticSprite(180, 600, 'ground');
+        //platforms.add(ground);
         //this.physics.add.collider(ground, ground2);
 
-        const platform = this.add.tileSprite(180, 450, 4*36, 30, 'block');
-        this.physics.add.existing(platform, true);
-        platforms.add(platform);
+        //const platform = this.add.tileSprite(180, 450, 4*36, 30, 'block');
+        //this.physics.add.existing(platform, true);
+        //platforms.add(platform);
 
-        this.player = this.physics.add.sprite(180, 500, 'player');
-        this.player.setFrame(3);
-        this.player.body.setCollideWorldBounds(true);
+        //this.player = this.physics.add.sprite(180, 500, 'player');
+        //this.player.setFrame(3);
+        //this.player.body.setCollideWorldBounds(true);
 
         this.anims.create({
             key: 'walk',
@@ -59,10 +70,25 @@ class GameScene extends Phaser.Scene{
             frameRate: 12,
             repeat: -1
         });
-
-        this.physics.add.collider(this.player, platforms);
+        this.anims.create({
+            key: 'burn',
+            frames: this.anims.generateFrameNames('fire', {frames: [0, 1]}),
+            frameRate: 4,
+            repeat: -1
+        });
+        this.setupLevel();
+        
+        this.physics.add.overlap([this.fires, this.enemy, this.barrels], this.player, () => this.restartGame());
+        this.physics.add.collider([this.player, this.enemy, this.barrels], this.platforms);
+        
 
         this.cursors = this.input.keyboard.createCursorKeys();
+
+        this.input.on('pointerdown', (pointer) =>{
+            console.log(pointer.x, pointer.y);
+        });
+
+        
     }
 
     update(){
@@ -99,6 +125,78 @@ class GameScene extends Phaser.Scene{
             this.player.setVelocityY(this.jumpSpeed);
             this.player.setFrame(2);
         }
+    }
+
+    setupLevel(){
+        const { platforms } = this.levelData; // const platforms = this.levelData.platforms
+        
+        for (const platform of platforms) {
+            let platformSprite;
+
+            if (platform.tileCount == 1){
+                platformSprite = this.add.sprite(platform.x, platform.y, platform.texture);
+                
+            }
+            else{
+                const width = this.textures.get(platform.texture).get(0).width;
+                const height = this.textures.get(platform.texture).get(0).height;
+                platformSprite = this.add.tileSprite(platform.x, platform.y, platform.tileCount * width, height, platform.texture);
+                
+            }
+            platformSprite.setOrigin(0,0);
+            this.physics.add.existing(platformSprite, true);
+            this.platforms.add(platformSprite);
+        }
+        const {player}=this.levelData;
+        this.player = this.physics.add.sprite(player.x, player.y, 'player');
+        this.player.body.setCollideWorldBounds(true);
+
+        const {enemy}=this.levelData;
+        this.enemy = this.physics.add.sprite(enemy.x, enemy.y, 'gorilla');
+        this.enemy.body.setCollideWorldBounds(true);
+        
+        const {fires} = this.levelData;
+        for ( const fire of fires){
+            const fireSprite = this.add.sprite(fire.x, fire.y, 'fire');
+            fireSprite.setOrigin(0,0);
+            fireSprite.anims.play('burn');
+
+            this.physics.add.existing(fireSprite,true);
+            this.fires.add(fireSprite);
+
+            fireSprite.setInteractive();
+            this.input.setDraggable(fireSprite);
+            this.input.on('drag', (gameObj, pointer, dragX, dragY)=>{
+                gameObj.x = dragX;
+                gameObj.y = dragY;
+                console.log(dragX, dragY);
+            });
+        }
+
+        const {spawner} = this.levelData;
+        this.time.addEvent({
+            delay: spawner.interval,
+            repeat: -1,
+            callback: ()=>{
+                const barrel = this.add.sprite(this.enemy.x, this.enemy.y, 'barrel');
+                this.physics.add.existing(barrel);
+                this.barrels.add(barrel);
+                barrel.body.setVelocityX(spawner.speed);
+
+                this.time.addEvent({
+                    delay: spawner.lifespan,
+                    repeat: 0,
+                    callback: () => barrel.destroy()
+                });
+            }
+        });
+    }
+
+    restartGame(){
+        this.cameras.main.fade(500);
+        this.cameras.main.on('camerafadeoutcomplete', () => {
+            this.scene.restart();
+        });
     }
 }
 
